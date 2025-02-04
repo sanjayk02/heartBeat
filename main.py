@@ -118,8 +118,8 @@ class InactivityDetector:
 if __name__ == "__main__":
     detector = InactivityDetector(
                                     total_runtime   = 360,  
-                                    timeout         = 5,  
-                                    check_interval  = 5,  
+                                    timeout         = 1,  
+                                    check_interval  = 1,  
                                     region          = (100, 100, 500, 400)  
                                     )
     detector.monitor()
