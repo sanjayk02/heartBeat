@@ -117,45 +117,35 @@ class InactivityDetector:
               f"Inactive Time: {timedelta(seconds=int(self.inactive_time))} ({inactive_percent:.2f}%)\n")
 
     def create_icon(self):
-        """Creates a system tray icon with real-time elapsed time."""
-        self.icon = pystray.Icon("inactivity_detector", self.create_icon_image(), menu=self.create_menu())
+        """Creates a system tray icon with real-time active and inactive time."""
+        self.icon = pystray.Icon("inactivity_detector", self.create_icon_image())
         threading.Thread(target=self.update_tray_time, daemon=True).start()
         self.icon.run()
 
     def create_icon_image(self):
         """Creates a simple icon image."""
-        image = Image.new("RGB", (64, 64), (0, 128, 255))  # Blue icon
-        draw = ImageDraw.Draw(image)
+        image   = Image.new("RGB", (64, 64), (0, 128, 255))  # Blue icon
+        draw    = ImageDraw.Draw(image)
         draw.rectangle((10, 10, 54, 54), fill=(255, 255, 255))
         return image
 
-    def create_menu(self):
-        """Creates menu options for the system tray icon."""
-        return pystray.Menu(pystray.MenuItem("Exit", self.exit_program))
-
     def update_tray_time(self):
-        """Updates the system tray icon title with elapsed time."""
+        """Updates the system tray icon title with active and inactive time."""
         while self.running:
-            elapsed_time = int(time.time() - self.start_time)
-            self.icon.title = f"Time: {timedelta(seconds=elapsed_time)}"
+            elapsed_active      = timedelta(seconds=int(self.active_time))
+            elapsed_inactive    = timedelta(seconds=int(self.inactive_time))
+            self.icon.title     = f"Active: {elapsed_active} | Inactive: {elapsed_inactive}"
             time.sleep(1)
-
-    def exit_program(self, icon, item):
-        """Stops monitoring and exits the program."""
-        print("Exiting program...")
-        self.running = False
-        self.icon.stop()
 
 
 if __name__ == "__main__":
     detector = InactivityDetector(
-        total_runtime=3600,  
-        timeout=5,  
-        check_interval=2,  
-        region=(100, 100, 500, 400)
+        total_runtime   =   300,  
+        timeout         =   60,  
+        check_interval  =   1,  
+        region          =   (100, 100, 500, 400)
     )
 
     monitor_thread = threading.Thread(target=detector.monitor)
     monitor_thread.start()
-
     detector.create_icon()
