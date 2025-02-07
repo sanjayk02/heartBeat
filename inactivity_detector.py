@@ -140,8 +140,8 @@ class InactivityDetector:
 
 if __name__ == "__main__":
     detector = InactivityDetector(
-        total_runtime   =   300,  
-        timeout         =   60,  
+        total_runtime   =   600,  
+        timeout         =   300,  
         check_interval  =   1,  
         region          =   (100, 100, 500, 400)
     )
