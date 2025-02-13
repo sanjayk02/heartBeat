@@ -1,151 +1,154 @@
 import time
+import asyncio
+import pyautogui
 import numpy as np
 import cv2
-import pyautogui
 from pynput import mouse, keyboard
 from datetime import datetime, timedelta
-import threading
-import pystray
-from PIL import Image, ImageDraw
+import os
+import signal
+import win32ts
 
 
 class InactivityDetector:
-    def __init__(self, total_runtime=3600, timeout=5, check_interval=2, region=(100, 100, 500, 400)):
+    def __init__(self, total_runtime=3600, timeout=3, check_interval=2, region=None, log_file="activity_log.txt"):
         self.total_runtime = total_runtime
         self.timeout = timeout
         self.check_interval = check_interval
-        self.region = region
+        self.log_file = log_file
+
+        screen_width, screen_height = pyautogui.size()
+        self.region = region if region else (
+            int(screen_width * 0.1),
+            int(screen_height * 0.1),
+            int(screen_width * 0.5),
+            int(screen_height * 0.5)
+        )
+
         self.last_activity_time = time.time()
         self.active = True
-
         self.start_time = time.time()
         self.active_time = 0
         self.inactive_time = 0
         self.last_check_time = self.start_time
-        self.last_screenshot = None
-
-        self.icon = None
+        self.last_frame = None
         self.running = True
+        self.session_locked = False
 
-        self.mouse_listener = mouse.Listener(on_move=self.on_activity, 
-                                             on_click=self.on_activity, 
-                                             on_scroll=self.on_activity)
+        self.mouse_listener = mouse.Listener(on_move=self.on_activity, on_click=self.on_activity, on_scroll=self.on_activity)
         self.keyboard_listener = keyboard.Listener(on_press=self.on_activity)
 
+        # Block Ctrl+C and termination signals
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+
+        with open(self.log_file, 'a') as f:
+            f.write(f"\n--- Monitoring Started at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---\n")
+
+    def log(self, message):
+        print(message)
+        with open(self.log_file, 'a') as f:
+            f.write(f"{message}\n")
+
     def on_activity(self, *args):
-        """Resets the inactivity timer on user interaction."""
         if not self.active:
-            print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - User is active again.")
-
-        if not self.active:
-            self.active_time += time.time() - self.last_check_time
-            self.active = True
-
+            self.log(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - User is active again.")
+        self.active = True
         self.last_activity_time = time.time()
 
     def take_screenshot(self):
-        """Captures a portion of the screen."""
         left, top, width, height = self.region
-        return pyautogui.screenshot(region=(left, top, width, height))
+        screenshot = pyautogui.screenshot(region=(left, top, width, height))
+        return cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2GRAY)
 
-    def compare_screenshots(self, img1, img2):
-        """Compares two images and returns True if they are different."""
-        if img1 is None or img2 is None:
-            return True  
+    def detect_motion(self, new_frame):
+        if self.last_frame is None:
+            self.last_frame = new_frame
+            return False
 
-        img1 = cv2.cvtColor(np.array(img1), cv2.COLOR_RGB2GRAY)
-        img2 = cv2.cvtColor(np.array(img2), cv2.COLOR_RGB2GRAY)
+        flow = cv2.calcOpticalFlowFarneback(self.last_frame, new_frame, None, 0.5, 3, 15, 3, 5, 1.2, 0)
+        motion_intensity = np.linalg.norm(flow)
+        self.last_frame = new_frame
 
-        diff = cv2.absdiff(img1, img2)
-        non_zero_count = np.count_nonzero(diff)
+        return motion_intensity > 5  # Adjust sensitivity if needed
 
-        return non_zero_count > 500  
+    def check_session_state(self):
+        """
+        Use pywin32's win32ts module to check the current session state.
+        This is the most stable approach for Active/Disconnected detection.
+        """
+        WTS_CURRENT_SESSION = win32ts.WTS_CURRENT_SESSION
 
-    def monitor(self):
-        """Monitors user activity based on keyboard, mouse, and screen changes."""
+        try:
+            session_info = win32ts.WTSQuerySessionInformation(
+                win32ts.WTS_CURRENT_SERVER_HANDLE,
+                WTS_CURRENT_SESSION,
+                win32ts.WTSConnectState
+            )
+
+            self.log(f"Session State Detected: {session_info}")
+
+            # Active = 0, Disconnected = 1, etc.
+            if session_info == win32ts.WTSActive:
+                return False  # Active session
+            else:
+                return True  # Disconnected or other states
+
+        except Exception as e:
+            self.log(f"Failed to query session state: {e}")
+            return True  # Assume disconnected if it fails
+
+    async def monitor(self):
         self.mouse_listener.start()
         self.keyboard_listener.start()
 
-        try:
-            while time.time() - self.start_time < self.total_runtime and self.running:
-                time_since_last_activity = time.time() - self.last_activity_time
+        while time.time() - self.start_time < self.total_runtime and self.running:
+            self.session_locked = self.check_session_state()
 
-                new_screenshot = self.take_screenshot()
-                if self.compare_screenshots(self.last_screenshot, new_screenshot):
-                    self.on_activity()
-                self.last_screenshot = new_screenshot
+            if self.session_locked:
+                self.log(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Session Disconnected or User Switched. Pausing...")
+                await asyncio.sleep(self.check_interval)
+                continue
 
-                elapsed = time.time() - self.last_check_time
-                self.last_check_time = time.time()
+            time_since_last_activity = time.time() - self.last_activity_time
+            new_frame = self.take_screenshot()
+            motion_detected = self.detect_motion(new_frame)
 
-                if time_since_last_activity <= self.timeout:
-                    self.active_time += elapsed
-                    self.active = True
-                    status = "Active"
-                else:
-                    self.inactive_time += elapsed
-                    self.active = False
-                    status = "Inactive"
+            if motion_detected:
+                self.on_activity()
 
-                print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - User is {status}")
+            elapsed = time.time() - self.last_check_time
+            self.last_check_time = time.time()
 
-                time.sleep(self.check_interval)
+            if time_since_last_activity <= self.timeout:
+                self.active_time += elapsed
+                self.active = True
+                status = "Active"
+            else:
+                self.inactive_time += elapsed
+                self.active = False
+                status = "Inactive"
 
-        except KeyboardInterrupt:
-            print("Stopping inactivity detector.")
-        finally:
-            self.mouse_listener.stop()
-            self.keyboard_listener.stop()
-            self.print_final_summary()
+            self.log(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - User is {status}")
+
+            await asyncio.sleep(self.check_interval)
+
+        self.mouse_listener.stop()
+        self.keyboard_listener.stop()
+        self.print_final_summary()
 
     def print_final_summary(self):
-        """Prints the final summary of active and inactive time."""
         total_time = self.active_time + self.inactive_time
+        active_percent = (self.active_time / total_time) * 100 if total_time > 0 else 0
+        inactive_percent = (self.inactive_time / total_time) * 100 if total_time > 0 else 0
 
-        if total_time > self.total_runtime:
-            self.active_time = (self.active_time / total_time) * self.total_runtime
-            self.inactive_time = self.total_runtime - self.active_time
-        elif total_time < self.total_runtime:
-            self.inactive_time += self.total_runtime - total_time
+        summary = (f"\nSummary:\n"
+                   f"Active Time: {timedelta(seconds=int(self.active_time))} ({active_percent:.2f}%)\n"
+                   f"Inactive Time: {timedelta(seconds=int(self.inactive_time))} ({inactive_percent:.2f}%)\n")
 
-        active_percent = (self.active_time / self.total_runtime) * 100
-        inactive_percent = (self.inactive_time / self.total_runtime) * 100
-
-        print(f"\nSummary (Final):\n"
-              f"Total Time Tracked: {timedelta(seconds=int(self.total_runtime))}\n"
-              f"Active Time: {timedelta(seconds=int(self.active_time))} ({active_percent:.2f}%)\n"
-              f"Inactive Time: {timedelta(seconds=int(self.inactive_time))} ({inactive_percent:.2f}%)\n")
-
-    def create_icon(self):
-        """Creates a system tray icon with real-time active and inactive time."""
-        self.icon = pystray.Icon("inactivity_detector", self.create_icon_image())
-        threading.Thread(target=self.update_tray_time, daemon=True).start()
-        self.icon.run()
-
-    def create_icon_image(self):
-        """Creates a simple icon image."""
-        image   = Image.new("RGB", (64, 64), (0, 128, 255))  # Blue icon
-        draw    = ImageDraw.Draw(image)
-        draw.rectangle((10, 10, 54, 54), fill=(255, 255, 255))
-        return image
-
-    def update_tray_time(self):
-        """Updates the system tray icon title with active and inactive time."""
-        while self.running:
-            elapsed_active      = timedelta(seconds=int(self.active_time))
-            elapsed_inactive    = timedelta(seconds=int(self.inactive_time))
-            self.icon.title     = f"Active: {elapsed_active} | Inactive: {elapsed_inactive}"
-            time.sleep(1)
+        self.log(summary)
 
 
 if __name__ == "__main__":
-    detector = InactivityDetector(
-        total_runtime   =   600,  
-        timeout         =   300,  
-        check_interval  =   1,  
-        region          =   (100, 100, 500, 400)
-    )
-
-    monitor_thread = threading.Thread(target=detector.monitor)
-    monitor_thread.start()
-    detector.create_icon()
+    detector = InactivityDetector(total_runtime=60, timeout=3, check_interval=2)
+    asyncio.run(detector.monitor())
