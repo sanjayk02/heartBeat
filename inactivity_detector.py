@@ -24,8 +24,8 @@ class InactivityDetector:
         self.timeout = timeout
         self.check_interval = check_interval
 
-        screen_width, screen_height = pyautogui.size()
-        self.region = region if region else (int(screen_width * 0.1), int(screen_height * 0.1), int(screen_width * 0.5), int(screen_height * 0.5))
+        self.update_screen_resolution()
+        self.region = region if region else (int(self.screen_width * 0.1), int(self.screen_height * 0.1), int(self.screen_width * 0.5), int(self.screen_height * 0.5))
 
         self.last_activity_time = time.time()
         self.active = True
@@ -41,6 +41,9 @@ class InactivityDetector:
 
         self.tray_icon = SystemTray.ActivityTrayIcon(self)
 
+    def update_screen_resolution(self):
+        self.screen_width, self.screen_height = pyautogui.size()
+
     def start_monitoring(self):
         monitor_thread = threading.Thread(target=self.monitor)
         monitor_thread.start()
@@ -55,6 +58,7 @@ class InactivityDetector:
 
     def take_screenshot(self):
         try:
+            self.update_screen_resolution()  # Ensure screen resolution is up to date
             left, top, width, height = self.region
             screenshot = pyautogui.screenshot(region=(left, top, width, height))
             return screenshot.resize((800, 600))
