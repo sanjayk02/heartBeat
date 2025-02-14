@@ -1,0 +1,28 @@
+from PySide2.QtWidgets import QApplication, QMainWindow
+from PySide2.QtUiTools import QUiLoader
+from PySide2.QtCore import QFile, QIODevice
+
+
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.load_ui()
+
+    def load_ui(self):
+        loader = QUiLoader()
+        ui_file = QFile("form.ui")
+        ui_file.open(QIODevice.ReadOnly)
+        self.ui = loader.load(ui_file, self)
+        ui_file.close()
+
+        self.setCentralWidget(self.ui)
+
+        # Add colors using stylesheets
+        self.ui.setStyleSheet("background-color: lightgray;")
+        self.ui.pushButton.setStyleSheet("background-color: green; color: white;")
+
+
+app = QApplication([])
+window = MainWindow()
+window.show()
+app.exec_()
