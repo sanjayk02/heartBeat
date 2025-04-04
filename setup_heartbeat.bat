@@ -2,27 +2,11 @@
 setlocal ENABLEDELAYEDEXPANSION
 
 :: ============================================================================
-:: HeartBeat - Setup Script
-:: ============================================================================
-:: This batch script automates the setup for the HeartBeat user inactivity
-:: monitoring system. It:
-::
-:: 1. Verifies Python exists.
-:: 2. Checks if the inactivity service is already installed.
-:: 3. If not installed:
-::    - Installs the Windows service.
-::    - Configures it to auto-start on system boot.
-::    - Starts the service.
-::    - Deploys a VBS launcher to the Startup folder (for launching the agent).
-::    - Schedules an hourly task to monitor the agent.
-:: 4. Logs the install time.
-::
-:: Must be run as Administrator.
+:: HeartBeat - Setup Script (Fixed Version)
 :: ============================================================================
 
 :: === CONFIGURATION ===
 set BASE_DIR=C:\stuff\source\heartBeat
-set PYTHON="C:\stuff\source\.venv\Scripts\pythonw.exe"
 set SERVICE_SCRIPT=%BASE_DIR%\core\inactivity_service.py
 set CHECK_SCRIPT=%BASE_DIR%\core\check_agents.py
 set VBS_SOURCE=%BASE_DIR%\launch_monitor.vbs
@@ -30,18 +14,38 @@ set SCHEDULER_BAT=%BASE_DIR%\schedule_agent_checker.bat
 set STARTUP_FOLDER=C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Startup
 set SERVICE_NAME=InactivityMonitorService
 
+:: === Python detection (local + network fallback) ===
+set PYTHON_PATH_1=C:\stuff\source\.venv\Scripts\python.exe
+set PYTHON_PATH_2=Z:\_Function\dev\users\sanjay\source\.venv\Scripts\python.exe
+REM You can use UNC path instead of Z: if needed:
+REM set PYTHON_PATH_2=\\YourServer\YourShare\_Function\dev\users\sanjay\source\.venv\Scripts\python.exe
+
+set RETRY_COUNT=5
+set PYTHON=
+
+:find_python
+if exist "%PYTHON_PATH_1%" (
+    set "PYTHON=%PYTHON_PATH_1%"
+) else if exist "%PYTHON_PATH_2%" (
+    set "PYTHON=%PYTHON_PATH_2%"
+) else (
+    echo Waiting for Python path to become available...
+    timeout /t 3 >nul
+    set /A RETRY_COUNT-=1
+    if !RETRY_COUNT! GTR 0 goto find_python
+
+    echo ERROR: Python not found at either:
+    echo     %PYTHON_PATH_1%
+    echo     %PYTHON_PATH_2%
+    pause
+    exit /b
+)
+
 :: === HEADER ===
 echo.
 echo ===============================
 echo  HeartBeat Setup Initialized
 echo ===============================
-
-:: === Validate Python exists ===
-if not exist %PYTHON% (
-    echo ERROR: Python not found at %PYTHON%
-    pause
-    exit /b
-)
 
 :: === Validate service script ===
 if not exist "%SERVICE_SCRIPT%" (
@@ -51,7 +55,7 @@ if not exist "%SERVICE_SCRIPT%" (
 )
 
 :: === Run service check script ===
-%PYTHON% "%CHECK_SCRIPT%"
+"%PYTHON%" "%CHECK_SCRIPT%"
 if %ERRORLEVEL% NEQ 0 (
     echo.
     echo Service and agent already installed. Skipping setup.
@@ -63,7 +67,7 @@ if %ERRORLEVEL% NEQ 0 (
 :: === Install Service ===
 echo.
 echo Installing HeartBeat service...
-%PYTHON% "%SERVICE_SCRIPT%" install
+"%PYTHON%" "%SERVICE_SCRIPT%" install
 
 :: === Set to auto-start on boot ===
 echo Configuring service to start automatically...
@@ -71,7 +75,7 @@ sc config %SERVICE_NAME% start= auto
 
 :: === Start Service ===
 echo Starting service...
-%PYTHON% "%SERVICE_SCRIPT%" start
+"%PYTHON%" "%SERVICE_SCRIPT%" start
 if %ERRORLEVEL% EQU 0 (
     echo Service started successfully.
 ) else (
