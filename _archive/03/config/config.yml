@@ -1,0 +1,18 @@
+mongodb:
+  host: "172.26.41.150"
+  port: 27017
+  username: "admin"
+  password: "MSvauy7s"
+  auth_db: "admin"
+  db_name: "heartBeat"
+
+settings:
+  total_runtime: 0
+  timeout: 60
+  check_interval: 10
+  motion_threshold: 0.95
+
+logging:
+  log_file: "C:\\Logs\\inactivity_detector.log"
+  log_level: "DEBUG"
+
