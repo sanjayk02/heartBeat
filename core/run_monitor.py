@@ -1,26 +1,11 @@
 # -*- coding: utf-8 -*-
+# Heart Beat Application - Inactivity Monitor (Manual Runner)
 # author: Sanja
 # date: 2025-03-01
 
-# Heart Beat Application - Inactivity Monitor
-# This script is part of the Heart Beat Application.
-# It monitors user inactivity and performs actions based on it.
-# This script is designed to be run manually for debugging purposes.
-# It is not intended for production use.
-# This script is part of the Heart Beat Application.
-# It monitors user inactivity and performs actions based on it.
-# This script is designed to be run manually for debugging purposes.
-# It is not intended for production use.
-# This script is part of the Heart Beat Application.
-# It monitors user inactivity and performs actions based on it.
-# This script is designed to be run manually for debugging purposes.
-# It is not intended for production use.
-# This script is part of the Heart Beat Application.
-# It monitors user inactivity and performs actions based on it.
-# This script is designed to be run manually for debugging purposes.
-
-import os
 import logging
+import signal
+import sys
 from inactivity_monitor import InactivityMonitor
 
 class RunMonitor:
@@ -28,6 +13,20 @@ class RunMonitor:
 
     def __init__(self):
         self.monitor = InactivityMonitor()
+
+        # Setup basic logging
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s - %(levelname)s - %(message)s"
+        )
+
+        # Signal handlers for clean exit
+        signal.signal(signal.SIGINT, self.handle_exit)
+        signal.signal(signal.SIGTERM, self.handle_exit)
+
+    def handle_exit(self, signum, frame):
+        logging.info("Received termination signal. Exiting RunMonitor.")
+        sys.exit(0)
 
     def start_monitoring(self):
         """Starts monitoring activity."""

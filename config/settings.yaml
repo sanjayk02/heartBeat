@@ -1,5 +1,5 @@
 settings:
-  total_runtime: 3600
+  total_runtime: 0
   timeout: 60
   check_interval: 10
   motion_threshold: 0.95
