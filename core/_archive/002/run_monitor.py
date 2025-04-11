@@ -16,19 +16,19 @@ from inactivity_monitor import InactivityMonitor
 
 class RunMonitor:
     def __init__(self):
-        self.monitor    = InactivityMonitor()
-        self.username   = getpass.getuser()
-        self.user_dir   = os.path.join(os.environ.get("USERPROFILE", os.getcwd()), "InactivityDetector")
+        self.monitor = InactivityMonitor()
+        self.username = getpass.getuser()
+        self.user_dir = os.path.join(os.environ.get("USERPROFILE", os.getcwd()), "InactivityDetector")
         os.makedirs(self.user_dir, exist_ok=True)
 
-        self.status_file    = os.path.join(self.user_dir, "status.txt")
-        self.log_file       = os.path.join(self.user_dir, "idle_reporter.log")
+        self.status_file = os.path.join(self.user_dir, "status.txt")
+        self.log_file = os.path.join(self.user_dir, "idle_reporter.log")
 
         logging.basicConfig(
             filename=self.log_file,
-            level   =logging.INFO,
-            format  ="%(asctime)s - %(levelname)s - %(message)s",
-            datefmt ="%Y-%m-%d %H:%M:%S"
+            level=logging.INFO,
+            format="%(asctime)s - %(levelname)s - %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S"
         )
 
         self.fix_crashed_status()
@@ -66,6 +66,7 @@ class RunMonitor:
         logging.info("[RUN_MONITOR] Starting InactivityMonitor...")
         monitor_thread = threading.Thread(target=self.monitor.monitor, daemon=True)
         monitor_thread.start()
+
 
 if __name__ == "__main__":
     runner = RunMonitor()

@@ -10,13 +10,10 @@ import servicemanager
 import logging
 import threading
 import time
-from datetime import datetime
 import os
-import win32security
 
 from idle_reporter import IdleReporter
 from event_detector import EventDetector
-from connect_to_db import MongoDatabase 
 
 try:
     log_dir = "C:\\InactivityService"
@@ -40,12 +37,11 @@ class InactivityService(win32serviceutil.ServiceFramework):
 
     def __init__(self, args):
         win32serviceutil.ServiceFramework.__init__(self, args)
-        self.hWaitStop              = win32event.CreateEvent(None, 0, 0, None)
-        self.running                = True
-        self.reporter               = IdleReporter()
-        self.event_detector         = EventDetector()
-        self.db                     = MongoDatabase()
-        self.last_event_signature   = None
+        self.hWaitStop = win32event.CreateEvent(None, 0, 0, None)
+        self.running = True
+        self.reporter = IdleReporter()
+        self.event_detector = EventDetector()
+        self.last_event_signature = None
 
     def SvcStop(self):
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
@@ -135,58 +131,19 @@ class InactivityService(win32serviceutil.ServiceFramework):
         except Exception as e:
             logging.error(f"Error setting status '{status}' for {username}: {e}")
 
-    # Replace the whole log_events_loop method with:
     def log_events_loop(self):
         while self.running:
             try:
                 event = self.event_detector.get_latest_user_event()
-
-                # Skip system services like UMFD-*, DWM-*
-                if event['username'].upper().startswith("UMFD-") or event['username'].upper().startswith("DWM-"):
-                    continue
-
                 if event:
                     sig = (event['event_type'], event['username'], event['timestamp'])
                     if sig != self.last_event_signature:
-                        logging.info("Service log - Status updated: %s", event['event_type'])
-
-                        self.set_user_status(event['username'], event['event_type'].upper())
+                        logging.info("[EVENT_DETECTOR] %s by %s on %s at %s",
+                                     event['event_type'], event['username'], event['hostname'], event['timestamp'])
                         self.last_event_signature = sig
-
-                        # === Push to DB ===
-                        try:
-                            entry = {
-                                "username": event['username'],
-                                "hostname": event['hostname'],
-                                "event_type": event['event_type'].upper(),
-                                "timestamp": datetime.now(),
-                                "source": "event_detector"
-                            }
-                            
-                            self.db.insert_pulse(entry)
-                            logging.info("Event pushed to DB.")
-                            
-                        except Exception as db_err:
-                            logging.warning(f"DB write failed: {db_err}")
-
-                        # === Per-user idle_reporter.log ===
-                        try:
-                            user_profile = os.path.join("C:\\Users", event['username'])
-                            user_log_dir = os.path.join(user_profile, "InactivityDetector")
-                            os.makedirs(user_log_dir, exist_ok=True)
-                            user_log_path = os.path.join(user_log_dir, "idle_reporter.log")
-
-                            if event['event_type'].lower() != "logoff":
-                                with open(user_log_path, "a") as f:
-                                    f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S,%f')[:-3]} - INFO - Status updated: {event['event_type'].capitalize()} \n")
-                        except Exception as e:
-                            logging.warning(f"Could not write per-user event log: {e}")
-
             except Exception as e:
                 logging.error("Event logging error: %s", e)
-
-            time.sleep(10)
-
+            time.sleep(60)
 
 
 if __name__ == '__main__':
