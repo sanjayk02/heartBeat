@@ -16,21 +16,25 @@ import win32security
 
 from idle_reporter import IdleReporter
 from event_detector import EventDetector
-from connect_to_db import MongoDatabase 
+from connect_to_db import MongoDatabase
 
-try:
-    log_dir = "C:\\InactivityService"
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
+# Reliable logging setup
+log_dir = "C:\\Users\\Public\\InactivityService"
+os.makedirs(log_dir, exist_ok=True)
+service_log_path = os.path.join(log_dir, "service.log")
 
-    logging.basicConfig(
-        filename=os.path.join(log_dir, "service.log"),
-        level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(message)s"
-    )
-    logging.info("Logging initialized.")
-except Exception as e:
-    logging.error(f"Failed to initialize logging: {e}")
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+while logger.hasHandlers():
+    logger.removeHandler(logger.handlers[0])
+
+file_handler = logging.FileHandler(service_log_path)
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
+
+logging.info("Logging initialized at startup.")
 
 
 class InactivityService(win32serviceutil.ServiceFramework):
@@ -56,16 +60,6 @@ class InactivityService(win32serviceutil.ServiceFramework):
         servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
                               servicemanager.PYS_SERVICE_STARTED,
                               (self._svc_name_, ""))
-
-        log_dir = "C:\\InactivityService"
-        if not os.path.exists(log_dir):
-            os.makedirs(log_dir)
-
-        logging.basicConfig(
-            filename=os.path.join(log_dir, "service.log"),
-            level=logging.INFO,
-            format="%(asctime)s - %(levelname)s - %(message)s"
-        )
 
         logging.info("Inactivity Detector Service started.")
 
@@ -121,7 +115,7 @@ class InactivityService(win32serviceutil.ServiceFramework):
 
     def set_user_status(self, username, status):
         try:
-            base_dir = os.path.join("C:\\InactivityService", "users", username)
+            base_dir = os.path.join("C:\\Users\\Public\\InactivityService", "users", username)
             status_file = os.path.join(base_dir, "status.txt")
 
             if not os.path.exists(base_dir):
@@ -135,58 +129,57 @@ class InactivityService(win32serviceutil.ServiceFramework):
         except Exception as e:
             logging.error(f"Error setting status '{status}' for {username}: {e}")
 
-    # Replace the whole log_events_loop method with:
     def log_events_loop(self):
         while self.running:
             try:
-                event = self.event_detector.get_latest_user_event()
+                events = self.event_detector.get_latest_user_events(count=1)
+                event = events[0] if events else None
 
-                # Skip system services like UMFD-*, DWM-*
+                if not event:
+                    continue
+
                 if event['username'].upper().startswith("UMFD-") or event['username'].upper().startswith("DWM-"):
                     continue
 
-                if event:
-                    sig = (event['event_type'], event['username'], event['timestamp'])
-                    if sig != self.last_event_signature:
-                        logging.info("Service log - Status updated: %s", event['event_type'])
+                sig = (event['event_type'], event['username'], event['timestamp'])
+                if sig != self.last_event_signature:
+                    logging.info("Service log - Status updated: %s", event['event_type'])
 
-                        self.set_user_status(event['username'], event['event_type'].upper())
-                        self.last_event_signature = sig
+                    self.set_user_status(event['username'], event['event_type'].upper())
+                    self.last_event_signature = sig
 
-                        # === Push to DB ===
-                        try:
-                            entry = {
-                                "username": event['username'],
-                                "hostname": event['hostname'],
-                                "event_type": event['event_type'].upper(),
-                                "timestamp": datetime.now(),
-                                "source": "event_detector"
-                            }
-                            
-                            self.db.insert_pulse(entry)
-                            logging.info("Event pushed to DB.")
-                            
-                        except Exception as db_err:
-                            logging.warning(f"DB write failed: {db_err}")
+                    # Push to MongoDB
+                    try:
+                        entry = {
+                            "username": event['username'],
+                            "hostname": event['hostname'],
+                            "event_type": event['event_type'].upper(),
+                            "timestamp": datetime.now(),
+                            "source": "event_detector"
+                        }
 
-                        # === Per-user idle_reporter.log ===
-                        try:
-                            user_profile = os.path.join("C:\\Users", event['username'])
-                            user_log_dir = os.path.join(user_profile, "InactivityDetector")
-                            os.makedirs(user_log_dir, exist_ok=True)
-                            user_log_path = os.path.join(user_log_dir, "idle_reporter.log")
+                        self.db.insert_pulse(entry)
+                        logging.info("Event pushed to DB.")
+                    except Exception as db_err:
+                        logging.warning(f"DB write failed: {db_err}")
 
-                            if event['event_type'].lower() != "logoff":
-                                with open(user_log_path, "a") as f:
-                                    f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S,%f')[:-3]} - INFO - Status updated: {event['event_type'].capitalize()} \n")
-                        except Exception as e:
-                            logging.warning(f"Could not write per-user event log: {e}")
+                    # Write to per-user idle_reporter.log (Logon & Logoff now both included)
+                    try:
+                        user_profile = os.path.join("C:\\Users", event['username'])
+                        user_log_dir = os.path.join(user_profile, "InactivityDetector")
+                        os.makedirs(user_log_dir, exist_ok=True)
+                        user_log_path = os.path.join(user_log_dir, "idle_reporter.log")
+
+                        with open(user_log_path, "a") as f:
+                            f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S,%f')[:-3]} - INFO - Status updated: {event['event_type'].capitalize()} \n")
+
+                    except Exception as e:
+                        logging.warning(f"Could not write per-user event log: {e}")
 
             except Exception as e:
                 logging.error("Event logging error: %s", e)
 
             time.sleep(10)
-
 
 
 if __name__ == '__main__':
