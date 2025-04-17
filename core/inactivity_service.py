@@ -1,79 +1,59 @@
 # -*- coding: utf-8 -*-
-# Inactivity Detector Service
+# Inactivity Detector Service (NSSM-compatible)
 # Author: Sanja
-# Date: 2025-03-01
+# Refactored: 2025-04-17
 
-import win32serviceutil
-import win32service
-import win32event
-import servicemanager
 import logging
 import threading
 import time
 from datetime import datetime
 import os
-import win32security
+import sys
 
 from idle_reporter import IdleReporter
 from event_detector import EventDetector
 from connect_to_db import MongoDatabase
 
-# Reliable logging setup
+# Setup logging
 log_dir = "C:\\Users\\Public\\InactivityService"
 os.makedirs(log_dir, exist_ok=True)
 service_log_path = os.path.join(log_dir, "service.log")
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
-
 while logger.hasHandlers():
     logger.removeHandler(logger.handlers[0])
-
 file_handler = logging.FileHandler(service_log_path)
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 
-logging.info("Logging initialized at startup.")
+logging.info("[STARTUP] Inactivity Detector Service initialized.")
 
 
-class InactivityService(win32serviceutil.ServiceFramework):
-    _svc_name_ = "InactivityDetectorService"
-    _svc_display_name_ = "Inactivity Detector Service"
-    _svc_description_ = "Logs user activity and session state."
+class InactivityService:
+    def __init__(self):
+        self.running = True
+        self.reporter = IdleReporter()
+        self.event_detector = EventDetector()
+        self.db = MongoDatabase()
+        self.last_event_signature = None
+        self.blocker = threading.Event()
 
-    def __init__(self, args):
-        win32serviceutil.ServiceFramework.__init__(self, args)
-        self.hWaitStop              = win32event.CreateEvent(None, 0, 0, None)
-        self.running                = True
-        self.reporter               = IdleReporter()
-        self.event_detector         = EventDetector()
-        self.db                     = MongoDatabase()
-        self.last_event_signature   = None
+    def run(self):
+        logging.info("Inactivity Detector Service started (NSSM mode).")
+        logging.info(f"Args passed: {sys.argv}")
 
-    def SvcStop(self):
-        self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
-        self.running = False
-        win32event.SetEvent(self.hWaitStop)
+        threading.Thread(target=self.reporter.monitor, daemon=True).start()
+        threading.Thread(target=self.monitor_user_sessions, daemon=True).start()
+        threading.Thread(target=self.log_events_loop, daemon=True).start()
 
-    def SvcDoRun(self):
-        servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
-                              servicemanager.PYS_SERVICE_STARTED,
-                              (self._svc_name_, ""))
-
-        logging.info("Inactivity Detector Service started.")
-
-        monitor_thread = threading.Thread(target=self.reporter.monitor)
-        monitor_thread.start()
-
-        logout_thread = threading.Thread(target=self.monitor_user_sessions, daemon=True)
-        logout_thread.start()
-
-        event_thread = threading.Thread(target=self.log_events_loop, daemon=True)
-        event_thread.start()
-
-        while self.running:
-            win32event.WaitForSingleObject(self.hWaitStop, 5000)
+        try:
+            self.blocker.wait()  # Keep main thread alive
+        except KeyboardInterrupt:
+            logging.info("[SHUTDOWN] Service interrupted by user (Ctrl+C).")
+        except Exception as e:
+            logging.exception("[ERROR] Unexpected error in main loop: %s", e)
 
     def monitor_user_sessions(self):
         try:
@@ -116,15 +96,13 @@ class InactivityService(win32serviceutil.ServiceFramework):
     def set_user_status(self, username, status):
         try:
             base_dir = os.path.join("C:\\Users\\Public\\InactivityService", "users", username)
+            os.makedirs(base_dir, exist_ok=True)
             status_file = os.path.join(base_dir, "status.txt")
-
-            if not os.path.exists(base_dir):
-                os.makedirs(base_dir)
 
             with open(status_file, 'w') as f:
                 f.write(status.upper())
 
-            logging.info(f"Wrote {status.upper()} for user {username} at {status_file}")
+            logging.info(f"User {username} status set to {status.upper()}.")
 
         except Exception as e:
             logging.error(f"Error setting status '{status}' for {username}: {e}")
@@ -143,12 +121,11 @@ class InactivityService(win32serviceutil.ServiceFramework):
 
                 sig = (event['event_type'], event['username'], event['timestamp'])
                 if sig != self.last_event_signature:
-                    logging.info("Service log - Status updated: %s", event['event_type'])
+                    logging.info("Status updated: %s", event['event_type'])
 
                     self.set_user_status(event['username'], event['event_type'].upper())
                     self.last_event_signature = sig
 
-                    # Push to MongoDB
                     try:
                         entry = {
                             "username": event['username'],
@@ -157,13 +134,11 @@ class InactivityService(win32serviceutil.ServiceFramework):
                             "timestamp": datetime.now(),
                             "source": "event_detector"
                         }
-
                         self.db.insert_pulse(entry)
                         logging.info("Event pushed to DB.")
                     except Exception as db_err:
                         logging.warning(f"DB write failed: {db_err}")
 
-                    # Write to per-user idle_reporter.log (Logon & Logoff now both included)
                     try:
                         user_profile = os.path.join("C:\\Users", event['username'])
                         user_log_dir = os.path.join(user_profile, "InactivityDetector")
@@ -171,7 +146,7 @@ class InactivityService(win32serviceutil.ServiceFramework):
                         user_log_path = os.path.join(user_log_dir, "idle_reporter.log")
 
                         with open(user_log_path, "a") as f:
-                            f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S,%f')[:-3]} - INFO - Status updated: {event['event_type'].capitalize()} \n")
+                            f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S,%f')[:-3]} - INFO - Status updated: {event['event_type'].capitalize()}\n")
 
                     except Exception as e:
                         logging.warning(f"Could not write per-user event log: {e}")
@@ -183,4 +158,5 @@ class InactivityService(win32serviceutil.ServiceFramework):
 
 
 if __name__ == '__main__':
-    win32serviceutil.HandleCommandLine(InactivityService)
+    service = InactivityService()
+    service.run()
