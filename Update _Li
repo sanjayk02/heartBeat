@@ -1,0 +1,10 @@
+dnspython==2.7.0
+keyboard==0.13.5
+lockfile==0.12.2
+pymongo==4.12.0
+PySide2==5.15.2.1
+python-daemon==3.1.2
+pywin32==310
+PyYAML==6.0.2
+shiboken2==5.15.2.1
+WMI==1.5.1
