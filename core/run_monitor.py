@@ -12,6 +12,10 @@ import getpass
 import time
 import threading
 from datetime import datetime
+
+script_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, script_dir)
+
 from inactivity_monitor import InactivityMonitor
 
 class RunMonitor:

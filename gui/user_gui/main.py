@@ -25,10 +25,13 @@ from PySide2.QtCore import Qt, QFile, QIODevice, QDate, QSize
 from PySide2.QtGui import QIcon, QPixmap, QFont, QPalette, QColor
 from PySide2.QtUiTools import QUiLoader
 
+script_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, script_dir)
+
 # ========================================================================================================
 # Custom Imports
 # ========================================================================================================
-from themes import themes  # Custom theme dictionary
+from themes import themes # Custom theme dictionary
 from db_handler import GetPulseData
 from time_summary import TimeSummary
 from collapsible_summary import CollapsibleTab

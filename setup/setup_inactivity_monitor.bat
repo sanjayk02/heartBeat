@@ -5,8 +5,8 @@ setlocal
 set SERVICE_NAME=InactivityDetectorService
 set DISPLAY_NAME="Inactivity Detector Service"
 set BASE_DIR=C:\stuff\source\PluseWork\heartBeat\core
-set PYTHON=C:\Program Files\Python310\python.exe
-set PYTHONW_PATH=C:\Program Files\Python310\pythonw.exe
+set PYTHON="C:\python\python310\python.exe"
+set PYTHONW_PATH="C:\python\python310\pythonw.exe"
 set NSSM=C:\stuff\source\PluseWork\heartBeat\app\nssm-2.24\win64\nssm.exe
 set REPORTER=%BASE_DIR%\idle_reporter.py
 set MONITOR=%BASE_DIR%\run_monitor.py

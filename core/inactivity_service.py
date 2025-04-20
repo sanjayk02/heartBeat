@@ -10,6 +10,9 @@ from datetime import datetime
 import os
 import sys
 
+script_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, script_dir)
+
 from idle_reporter import IdleReporter
 from event_detector import EventDetector
 from connect_to_db import MongoDatabase
