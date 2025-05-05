@@ -1,0 +1,100 @@
+import sys
+from PySide2.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QLabel, QVBoxLayout, QHBoxLayout,
+    QFrame, QPushButton
+)
+from PySide2.QtGui import QPixmap, QFont
+from PySide2.QtCore import Qt
+
+
+class Dashboard(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Modern Dashboard")
+        self.setGeometry(100, 100, 1200, 700)
+        self.setStyleSheet("background-color: #1c1c1c; color: white;")
+        self.init_ui()
+
+    def init_ui(self):
+        main_widget = QWidget()
+        main_layout = QVBoxLayout(main_widget)
+        main_layout.setContentsMargins(15, 15, 15, 15)
+        main_layout.setSpacing(15)
+
+        # Top bar
+        top_bar = QHBoxLayout()
+        title   = QLabel("Dashboard")
+        title.setFont(QFont("Arial", 16, QFont.Bold))
+        last_conn = QLabel("Last connexion: 30 March 2016 at 2h10 pm")
+        last_conn.setStyleSheet("color: #aaa;")
+        refresh = QPushButton("⟳ Refresh")
+        refresh.setFixedWidth(100)
+        refresh.setStyleSheet("QPushButton { background-color: #2c2c2c; border: none; color: #00FFC6; }")
+        top_bar.addWidget(title)
+        top_bar.addStretch()
+        top_bar.addWidget(last_conn)
+        top_bar.addWidget(refresh)
+
+        main_layout.addLayout(top_bar)
+
+        # Stats cards
+        stats_layout = QHBoxLayout()
+        for label, value in [
+            ("Total views", "186,257"),
+            ("Total users", "9,712"),
+            ("Total messages", "230"),
+            ("Total connexions", "705")
+        ]:
+            card = self.create_stat_card(label, value)
+            stats_layout.addWidget(card)
+        main_layout.addLayout(stats_layout)
+
+        # Middle chart area
+        middle_layout = QHBoxLayout()
+
+        # Line chart
+        chart1 = QLabel()
+        chart1.setPixmap(QPixmap("visitors_line_chart.png").scaled(600, 300, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        chart1.setAlignment(Qt.AlignCenter)
+        middle_layout.addWidget(chart1)
+
+        # Donut chart with legend
+        right_box = QVBoxLayout()
+        donut = QLabel()
+        donut.setPixmap(QPixmap("views_donut_chart.png").scaled(300, 300, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        donut.setAlignment(Qt.AlignCenter)
+        right_box.addWidget(donut)
+
+
+        main_layout.addLayout(middle_layout)
+        self.setCentralWidget(main_widget)
+
+    def create_stat_card(self, label, value):
+        card = QFrame()
+        card.setFixedSize(250, 80)
+        card.setStyleSheet("""
+            QFrame {
+                background-color: #2c2c2c;
+                border-bottom: 2px solid #00FFC6;
+                border-radius: 6px;
+            }
+        """)
+        layout = QVBoxLayout(card)
+        title = QLabel(label)
+        title.setStyleSheet("font-size: 12px; color: #bbb;")
+        title.setAlignment(Qt.AlignCenter)
+
+        val = QLabel(value)
+        val.setStyleSheet("font-size: 20px; font-weight: bold;")
+        val.setAlignment(Qt.AlignCenter)
+
+        layout.addWidget(title)
+        layout.addWidget(val)
+        return card
+
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    dashboard = Dashboard()
+    dashboard.show()
+    sys.exit(app.exec_())
