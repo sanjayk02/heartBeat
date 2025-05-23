@@ -1,0 +1,117 @@
+from PySide2.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QLabel, QComboBox, QTableWidget, QTableWidgetItem, QProgressBar
+)
+from PySide2.QtCore import Qt
+import sys
+
+
+class AdminDashboard(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Admin Dashboard")
+        self.setMinimumSize(800, 400)
+
+        self.total_day_hours = 9  # Goal: 9 working hours per day
+
+        # Central layout
+        central_widget = QWidget()
+        main_layout = QVBoxLayout()
+
+        # Date dropdowns
+        date_layout = QHBoxLayout()
+        self.start_date_combo = QComboBox()
+        self.end_date_combo = QComboBox()
+        self.start_date_combo.addItems(["21-05-2025"])
+        self.end_date_combo.addItems(["23-05-2025"])
+        date_layout.addWidget(self.start_date_combo)
+        date_layout.addWidget(self.end_date_combo)
+
+        # Table with multiple rows
+        self.table = QTableWidget(3, 2)
+        self.table.setHorizontalHeaderLabels(["Timestamp", "Active Time (hh:mm:ss)"])
+        self.table.setColumnWidth(0, 300)
+
+        # Sample data
+        self.table.setItem(0, 0, QTableWidgetItem("2025-05-22 10:00:00"))
+        self.table.setItem(0, 1, QTableWidgetItem("02:30:00"))
+        self.table.setItem(1, 0, QTableWidgetItem("2025-05-22 13:00:00"))
+        self.table.setItem(1, 1, QTableWidgetItem("01:00:00"))
+        self.table.setItem(2, 0, QTableWidgetItem("2025-05-22 15:00:00"))
+        self.table.setItem(2, 1, QTableWidgetItem("00:45:00"))
+
+        self.table.itemChanged.connect(self.update_progress_from_table)
+
+        # Progress bar
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setMinimum(0)
+        self.progress_bar.setMaximum(100)
+
+        # Bottom label
+        self.bottom_label = QLabel()
+        self.bottom_label.setAlignment(Qt.AlignRight)
+
+        # Bottom layout
+        bottom_layout = QHBoxLayout()
+        bottom_layout.addWidget(self.progress_bar)
+        bottom_layout.addWidget(self.bottom_label)
+
+        # Assemble layout
+        main_layout.addLayout(date_layout)
+        main_layout.addWidget(self.table)
+        main_layout.addLayout(bottom_layout)
+        central_widget.setLayout(main_layout)
+        self.setCentralWidget(central_widget)
+
+        # Initial update
+        self.update_progress_from_table()
+
+    def update_progress_from_table(self):
+        total_seconds = 0
+
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 1)
+            if item:
+                time_str = item.text().strip()
+                try:
+                    h, m, s = map(int, time_str.split(":"))
+                    total_seconds += h * 3600 + m * 60 + s
+                except ValueError:
+                    continue  # Skip invalid entries
+
+        total_hours = total_seconds / 3600
+        percent = int((total_hours / self.total_day_hours) * 100)
+        self.progress_bar.setValue(min(percent, 100))  # Cap at 100%
+
+        # Dynamic color based on percentage
+        if percent < 30:
+            color = "#d9534f"  # red
+        elif percent < 70:
+            color = "#f0ad4e"  # orange
+        else:
+            color = "#5cb85c"  # green
+
+        self.progress_bar.setStyleSheet(f"""
+            QProgressBar {{
+                border: 1px solid gray;
+                border-radius: 5px;
+                text-align: center;
+            }}
+            QProgressBar::chunk {{
+                background-color: {color};
+                width: 20px;
+            }}
+        """)
+
+        # Update label
+        h = int(total_seconds // 3600)
+        m = int((total_seconds % 3600) // 60)
+        s = int(total_seconds % 60)
+        self.bottom_label.setText(f"{h:02}h {m:02}m {s:02}s / {self.total_day_hours}h")
+
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    window = AdminDashboard()
+    window.show()
+    sys.exit(app.exec_())
