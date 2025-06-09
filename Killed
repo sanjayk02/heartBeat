@@ -1,0 +1,35 @@
+# === CONFIG ===
+$pythonw = "\\psi-emc\Zdrv\apps\win64\psi\tools\psiPulse\app\python310\pythonw.exe"
+$scriptDir = "\\psi-emc\Zdrv\apps\win64\psi\tools\psiPulse\core"
+$scripts = @("run_monitor.py", "idle_reporter.py")
+
+# Get current username without domain
+$currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name.Split('\')[-1]
+
+foreach ($script in $scripts) {
+    $fullPath = Join-Path $scriptDir $script
+
+    # Find running instances of the script owned by the current user
+    $running = Get-CimInstance Win32_Process -Filter "Name = 'pythonw.exe'" | Where-Object {
+        $_.CommandLine -like "*$script*" -and ($_.GetOwner().User -eq $currentUser)
+    }
+
+    if ($running) {
+        foreach ($proc in $running) {
+            try {
+                Stop-Process -Id $proc.ProcessId -Force
+                Write-Output "✅ Killed $script (PID: $($proc.ProcessId))"
+            } catch {
+                Write-Output "❌ Failed to kill $script (PID: $($proc.ProcessId)): $_"
+            }
+        }
+    } else {
+        Write-Output "ℹ️ $script was not running."
+    }
+
+    Start-Sleep -Seconds 2  # Optional: small delay to ensure cleanup
+
+    # Start a new instance of the script
+    Start-Process -FilePath $pythonw -ArgumentList "`"$fullPath`""
+    Write-Output "🚀 Started $script"
+}
