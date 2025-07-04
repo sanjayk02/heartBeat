@@ -1,0 +1,54 @@
+import os
+import OpenImageIO as oiio
+
+def convert_folder_tif_to_exr(input_dir, output_dir=None, ocio_space="lin_rec709"):
+    if output_dir is None:
+        output_dir = input_dir
+
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    for filename in os.listdir(input_dir):
+        if filename.lower().endswith((".tif", ".tiff")):
+            input_path = os.path.join(input_dir, filename)
+            output_filename = os.path.splitext(filename)[0] + ".exr"
+            output_path = os.path.join(output_dir, output_filename)
+
+            print("▶ Converting:", filename)
+
+            # Load the source image
+            src = oiio.ImageBuf(input_path)
+            if not src.initialized:
+                print("❌ Failed to load:", input_path)
+                continue
+
+            # Convert from sRGB to linear by applying gamma correction: sRGB^2.2 = linear
+            linear_buf = oiio.ImageBuf()
+            if not oiio.ImageBufAlgo.pow(linear_buf, src, 2.2):
+                print("❌ Gamma correction failed on:", filename)
+                continue
+
+            # Set output EXR to 16-bit float
+            linear_buf.set_write_format("half")
+
+            # Add proper metadata
+            spec = linear_buf.spec()
+            spec.attribute("oiio:ColorSpace", "linear")
+            spec.attribute("TransferFunction", "linear")
+            spec.attribute("compression", "zip")
+            spec.attribute("ocio:colorspace", ocio_space)  # OCIO tag (important for VFX)
+
+            # Write the EXR
+            if not linear_buf.write(output_path):
+                print("❌ Failed to write:", output_filename)
+            else:
+                print("✅ Saved:", output_filename)
+
+# ------------------------------
+# ✅ Example usage
+# ------------------------------
+if __name__ == "__main__":
+    input_folder = r"C:\Users\Sanja\Downloads\exr_test"  # Change this to your TIF folder
+    output_folder = r"C:\Users\Sanja\Downloads\exr_test\converted"  # Optional output path
+
+    convert_folder_tif_to_exr(input_folder, output_folder, ocio_space="lin_rec709")
