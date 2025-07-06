@@ -1,0 +1,67 @@
+from PIL import Image
+import OpenEXR
+import Imath
+import numpy as np
+import os
+
+# -*- coding: utf-8 -*-
+
+
+# ------------------------------------------------------------------------------------
+# sRGB to Linear Conversion (gamma correction)
+# ------------------------------------------------------------------------------------
+def srgb_to_linear(channel):
+    """Convert 0–255 sRGB image to linear float32 (0.0–1.0)"""
+    c = channel / 255.0
+    return np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4).astype(np.float32)
+
+# ------------------------------------------------------------------------------------
+# Convert a single TIFF image to EXR
+# ------------------------------------------------------------------------------------
+def convert_tiff_to_exr(input_path, output_path):
+    img = Image.open(input_path).convert("RGB")
+    width, height = img.size
+
+    # Split RGB channels and apply sRGB → linear
+    r, g, b = img.split()
+    r_np = srgb_to_linear(np.array(r, dtype=np.float32))
+    g_np = srgb_to_linear(np.array(g, dtype=np.float32))
+    b_np = srgb_to_linear(np.array(b, dtype=np.float32))
+
+    # Create EXR header
+    header = OpenEXR.Header(width, height)
+    pt = Imath.PixelType(Imath.PixelType.FLOAT)  # Use FLOAT for full precision
+    header['channels'] = {
+        'R': Imath.Channel(pt),
+        'G': Imath.Channel(pt),
+        'B': Imath.Channel(pt)
+    }
+
+    # Write EXR
+    exr = OpenEXR.OutputFile(output_path, header)
+    exr.writePixels({
+        'R': r_np.tobytes(),
+        'G': g_np.tobytes(),
+        'B': b_np.tobytes()
+    })
+    exr.close()
+    print("✔ Converted:", os.path.basename(input_path), "→", os.path.basename(output_path))
+
+# ------------------------------------------------------------------------------------
+# Batch convert all TIFFs in a folder
+# ------------------------------------------------------------------------------------
+def batch_convert(folder_path):
+    for file in os.listdir(folder_path):
+        if file.lower().endswith((".tif", ".tiff")):
+            input_file = os.path.join(folder_path, file)
+            output_file = os.path.splitext(input_file)[0] + ".exr"
+            convert_tiff_to_exr(input_file, output_file)
+
+# ------------------------------------------------------------------------------------
+# Run Example
+# ------------------------------------------------------------------------------------
+
+# Example usage
+if __name__ == "__main__":
+    input_folder = r"C:\Users\Sanja\Downloads\exr_test"  # <<< CHANGE THIS
+    batch_convert(input_folder)
