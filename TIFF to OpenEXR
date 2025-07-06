@@ -1,0 +1,68 @@
+# -*- coding: utf-8 -*-
+# Convert TIFF to OpenEXR with optional sRGB to linear correction
+
+from PIL import Image
+import OpenEXR, Imath
+import numpy as np
+import os
+
+# --------------------------------------------------------------------------------
+# Gamma conversion: sRGB to linear float32
+# --------------------------------------------------------------------------------
+def srgb_to_linear(channel):
+    c = channel / 255.0
+    return np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4).astype(np.float32)
+
+# --------------------------------------------------------------------------------
+# Convert a single .tif or .tiff file to .exr
+# --------------------------------------------------------------------------------
+def convert_tiff_to_exr(input_path, output_path, apply_gamma=True):
+    img = Image.open(input_path).convert("RGB")
+    width, height = img.size
+    r, g, b = img.split()
+
+    # Apply gamma correction or simple normalization
+    if apply_gamma:
+        r_np = srgb_to_linear(np.array(r, dtype=np.float32))
+        g_np = srgb_to_linear(np.array(g, dtype=np.float32))
+        b_np = srgb_to_linear(np.array(b, dtype=np.float32))
+    else:
+        r_np = np.array(r, dtype=np.float32) / 255.0
+        g_np = np.array(g, dtype=np.float32) / 255.0
+        b_np = np.array(b, dtype=np.float32) / 255.0
+
+    # Create EXR header
+    header = OpenEXR.Header(width, height)
+    pt = Imath.PixelType(Imath.PixelType.FLOAT)  # or HALF for 16-bit
+    header['channels'] = {
+        'R': Imath.Channel(pt),
+        'G': Imath.Channel(pt),
+        'B': Imath.Channel(pt)
+    }
+
+    # Write to EXR
+    exr = OpenEXR.OutputFile(output_path, header)
+    exr.writePixels({
+        'R': r_np.tobytes(),
+        'G': g_np.tobytes(),
+        'B': b_np.tobytes()
+    })
+    exr.close()
+    print("✔ Converted:", os.path.basename(input_path), "→", os.path.basename(output_path))
+
+# --------------------------------------------------------------------------------
+# Batch convert all .tif/.tiff files in a folder
+# --------------------------------------------------------------------------------
+def batch_convert(folder_path, apply_gamma=True):
+    for file in os.listdir(folder_path):
+        if file.lower().endswith((".tif", ".tiff")):
+            input_file = os.path.join(folder_path, file)
+            output_file = os.path.splitext(input_file)[0] + ".exr"
+            convert_tiff_to_exr(input_file, output_file, apply_gamma)
+
+# --------------------------------------------------------------------------------
+# Run
+# --------------------------------------------------------------------------------
+if __name__ == "__main__":
+    input_folder = r"C:\path\to\tiff_folder"  # <<< 🔁 Change to your folder
+    batch_convert(input_folder, apply_gamma=True)  # 🔁 Set to False for viewer-friendly EXR
