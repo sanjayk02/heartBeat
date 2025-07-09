@@ -1,0 +1,51 @@
+import os
+import math
+from PIL import Image
+
+class UdimSampler(object):
+    def __init__(self, udim_texture_template):
+        """
+        :param udim_texture_template: str, e.g. "C:/textures/diffuse.<UDIM>.tif"
+        """
+        self.template = udim_texture_template
+        self.cache = {}  # Cache loaded images by UDIM number
+
+    def get_udim_tile(self, u, v):
+        tile_u = int(math.floor(u))
+        tile_v = int(math.floor(v))
+        udim_number = 1001 + tile_u + tile_v * 10
+        return udim_number, tile_u, tile_v
+
+    def get_uv_pixel_coords(self, u, v, tile_u, tile_v, img_width, img_height):
+        u_frac = u - tile_u
+        v_frac = v - tile_v
+        px = int(u_frac * img_width)
+        py = int((1.0 - v_frac) * img_height)
+        return px, py
+
+    def load_udim_image(self, udim_number):
+        if udim_number in self.cache:
+            return self.cache[udim_number]
+
+        path = self.template.replace("<UDIM>", str(udim_number))
+        if not os.path.exists(path):
+            print("Missing UDIM tile:", path)
+            return None
+
+        img = Image.open(path).convert("RGB")
+        self.cache[udim_number] = img
+        return img
+
+    def get_color(self, u, v):
+        udim_number, tile_u, tile_v = self.get_udim_tile(u, v)
+        img = self.load_udim_image(udim_number)
+        if img is None:
+            return None
+
+        width, height = img.size
+        px, py = self.get_uv_pixel_coords(u, v, tile_u, tile_v, width, height)
+        if 0 <= px < width and 0 <= py < height:
+            return img.getpixel((px, py))
+        else:
+            print("Pixel out of bounds:", px, py)
+            return None
