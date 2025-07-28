@@ -1,0 +1,46 @@
+import maya.cmds as cmds
+import os
+
+def render_frames_hw2_with_scene_name():
+    # --- Configurable ---
+    camera_name = 'renderCam'  # replace with your camera name
+    output_folder = r"D:/renders/output"  # replace with your custom output folder
+    start_frame = 1001
+    end_frame = 1006
+    # ---------------------
+
+    # Make sure the output folder exists
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+
+    # Ensure renderer is Maya Hardware 2.0
+    cmds.setAttr('defaultRenderGlobals.currentRenderer', 'mayaHardware2', type='string')
+
+    # Get current render resolution
+    width = cmds.getAttr('defaultResolution.width')
+    height = cmds.getAttr('defaultResolution.height')
+
+    # Get current scene name without extension
+    scene_name = cmds.file(q=True, sn=True, shortName=True)
+    if scene_name:
+        scene_name = os.path.splitext(scene_name)[0]
+    else:
+        scene_name = "untitled"
+
+    print("Rendering frames {} to {} with camera '{}'".format(start_frame, end_frame, camera_name))
+    print("Resolution: {}x{}, Output folder: {}".format(width, height, output_folder))
+
+    for frame in range(start_frame, end_frame + 1):
+        print("Rendering frame:", frame)
+        cmds.currentTime(frame, edit=True)
+
+        # Build output file name: SceneName_frame_1001.tif
+        output_file = os.path.join(output_folder, "{}_frame_{}.tif".format(scene_name, frame))
+
+        # Render frame
+        cmds.hwRender(f=output_file, cam=camera_name, w=width, h=height)
+
+    print("Render complete!")
+
+# Run it:
+render_frames_hw2_with_scene_name()
