@@ -1,0 +1,98 @@
+import os
+import maya.OpenMayaUI as omui
+
+# Version‑safe import: PySide2 vs PySide6
+try:
+    from PySide6 import QtWidgets, QtCore, QtUiTools
+    from PySide6.QtCore import QFile
+    from shiboken6 import wrapInstance
+except ImportError:
+    from PySide2 import QtWidgets, QtCore, QtUiTools
+    from PySide2.QtCore import QFile
+    from shiboken2 import wrapInstance
+
+
+class MyCustomUI(QtWidgets.QDialog):
+    """
+    Class to load a .ui file properly into Maya.
+    """
+    WINDOW_NAME = "MyCustomUIWindow"  # unique objectName
+
+    def __init__(self, ui_path, parent=None):
+        super(MyCustomUI, self).__init__(parent or self.get_maya_main_window())
+
+        self.setObjectName(self.WINDOW_NAME)  # important for deletion
+        self.setWindowFlags(self.windowFlags() | QtCore.Qt.Window)
+        self.setWindowTitle("My Custom UI")  # Optional
+
+        # Load .ui file
+        loaded_ui = self.load_ui(ui_path, self)
+
+        # Embed in layout
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(loaded_ui)
+
+        # Keep reference
+        self.ui = loaded_ui
+
+        # Example: connect signals here if you want
+        # self.ui.pushButton.clicked.connect(self.on_my_button_clicked)
+
+    @classmethod
+    def get_maya_main_window(cls):
+        """
+        Return the Maya main window as a QWidget.
+        """
+        ptr = omui.MQtUtil.mainWindow()
+        if ptr is not None:
+            return wrapInstance(int(ptr), QtWidgets.QWidget)
+
+    @classmethod
+    def load_ui(cls, ui_file_path, parent=None):
+        """
+        Loads a .ui file and returns the top-level widget.
+        """
+        loader = QtUiTools.QUiLoader()
+        ui_file = QFile(ui_file_path)
+        ui_file.open(QFile.ReadOnly)
+        ui = loader.load(ui_file, parent)
+        ui_file.close()
+        return ui
+
+    @classmethod
+    def delete_existing(cls):
+        """
+        Deletes any existing window with the same objectName.
+        """
+        for widget in QtWidgets.QApplication.allWidgets():
+            if widget.objectName() == cls.WINDOW_NAME:
+                widget.close()
+                widget.deleteLater()
+
+    def show_ui(self):
+        """
+        Show the UI.
+        """
+        self.show()
+
+    def on_my_button_clicked(self):
+        print("Button clicked!")
+
+
+def main():
+    ui_file_path = "/full/path/to/your_file.ui"  # <-- replace with your actual .ui path
+
+    if not os.path.exists(ui_file_path):
+        raise IOError(f"UI file not found: {ui_file_path}")
+
+    # Delete existing window first
+    MyCustomUI.delete_existing()
+
+    # Create and show new
+    win = MyCustomUI(ui_file_path)
+    win.show_ui()
+
+
+if __name__ == "__main__":
+    main()
