@@ -1,0 +1,72 @@
+import os
+import maya.OpenMayaUI as omui
+
+# Version‑safe import: PySide2 vs PySide6
+try:
+    from PySide6 import QtWidgets, QtCore, QtUiTools
+    from PySide6.QtCore import QFile
+    from shiboken6 import wrapInstance
+except ImportError:
+    from PySide2 import QtWidgets, QtCore, QtUiTools
+    from PySide2.QtCore import QFile
+    from shiboken2 import wrapInstance
+
+
+class MyCustomUI(QtWidgets.QDialog):
+    """
+    Example class to load a .ui file in Maya 2023+ and 2025+.
+    """
+    def __init__(self, ui_path, parent=None):
+        super(MyCustomUI, self).__init__(parent or self.get_maya_main_window())
+        self.setWindowFlags(self.windowFlags() | QtCore.Qt.Window)
+        self.ui = self.load_ui(ui_path, self)
+        # Optionally connect signals here, e.g.:
+        # self.ui.myButton.clicked.connect(self.on_my_button_clicked)
+
+    @classmethod
+    def get_maya_main_window(cls):
+        """
+        Return the Maya main window as a QWidget.
+        """
+        ptr = omui.MQtUtil.mainWindow()
+        if ptr is not None:
+            return wrapInstance(int(ptr), QtWidgets.QWidget)
+
+    @classmethod
+    def load_ui(cls, ui_file_path, parent=None):
+        """
+        Loads a .ui file and returns the top-level widget.
+        """
+        loader = QtUiTools.QUiLoader()
+        ui_file = QFile(ui_file_path)
+        ui_file.open(QFile.ReadOnly)
+        ui = loader.load(ui_file, parent)
+        ui_file.close()
+        return ui
+
+    def show_ui(self):
+        """
+        Show the UI.
+        """
+        self.show()
+
+    # Example slot:
+    def on_my_button_clicked(self):
+        print("Button clicked!")
+
+
+def main():
+    # Replace with your actual .ui file path:
+    ui_file_path = "/full/path/to/your_file.ui"
+
+    # Optional: check if file exists
+    if not os.path.exists(ui_file_path):
+        raise IOError(f"UI file not found: {ui_file_path}")
+
+    # Create and show the UI
+    win = MyCustomUI(ui_file_path)
+    win.show_ui()
+
+
+if __name__ == "__main__":
+    main()
