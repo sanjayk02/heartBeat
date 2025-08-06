@@ -1,0 +1,26 @@
+def find_file_texture_node(attribute_plug, visited=None):
+    """
+    Recursively find fileTexture node connected upstream to given plug.
+    """
+    if visited is None:
+        visited = set()
+
+    if attribute_plug in visited:
+        return None
+    visited.add(attribute_plug)
+
+    connections = cmds.listConnections(attribute_plug, plugs=True, source=True, destination=False) or []
+    for conn in connections:
+        node = conn.split('.')[0]
+        node_type = cmds.nodeType(node)
+
+        if node_type == 'file':
+            return node
+        else:
+            # Recurse into upstream node's output attributes
+            outputs = cmds.listConnections(node, plugs=True, source=True, destination=False) or []
+            for out in outputs:
+                file_node = find_file_texture_node(out, visited)
+                if file_node:
+                    return file_node
+    return None
