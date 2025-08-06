@@ -1,0 +1,180 @@
+import maya.cmds as cmds
+import os
+import re
+import json
+
+
+class TextureAnalyzer(object):
+    def __init__(self):
+        pass
+
+    def get_udim_tiles_from_file_node(self, file_node):
+        try:
+            uv_mode = cmds.getAttr(file_node + ".uvTilingMode")
+        except Exception:
+            uv_mode = 0
+
+        if uv_mode != 3:
+            return []
+
+        try:
+            base_texture = cmds.getAttr(file_node + ".fileTextureName")
+            directory = os.path.normpath(os.path.dirname(base_texture))
+            filename = os.path.basename(base_texture)
+
+            match = re.match(r"^(.*)\.(1\d{3})\.(\w+)$", filename)
+            if not match:
+                return []
+
+            prefix, ext = match.group(1), match.group(3)
+            udim_pattern = re.compile(r'^' + re.escape(prefix) + r'\.(1\d{3})\.' + re.escape(ext) + r'$')
+            all_files = os.listdir(directory)
+            matching_tiles = [os.path.join(directory, f) for f in all_files if udim_pattern.match(f)]
+
+            return sorted(matching_tiles)
+
+        except Exception as e:
+            print("⚠ Failed to process UDIM tiles for '{}': {}".format(file_node, e))
+            return []
+
+    def get_textures_recursively(self, attr, visited=None):
+        """
+        Recursively collect textures and fallback value from a shader attribute.
+        Supports intermediate and multi-input nodes.
+        Returns: {"texture": str or list, "value": list or float}
+        """
+        if visited is None:
+            visited = set()
+
+        info = {
+            "texture": [],
+            "value": [0.0, 0.0, 0.0] if attr.lower().endswith("color") else 1.0
+        }
+
+        if attr in visited:
+            return info
+        visited.add(attr)
+
+        upstream = cmds.listConnections(attr, plugs=True, source=True, destination=False) or []
+        if not upstream:
+            try:
+                value = cmds.getAttr(attr)
+                if value is not None:
+                    if isinstance(value, (tuple, list)):
+                        info["value"] = list(value[0]) if isinstance(value[0], (tuple, list)) else list(value)
+                    else:
+                        info["value"] = value
+            except Exception as e:
+                print(f"⚠ Could not read value from '{attr}': {e}")
+            return info
+
+        upstream_attr = upstream[0]
+        node, upstream_socket = upstream_attr.split(".")
+        node_type = cmds.nodeType(node)
+
+        # Handle file node
+        if node_type == "file":
+            try:
+                udim_tiles = self.get_udim_tiles_from_file_node(node)
+                if udim_tiles:
+                    info["texture"] = udim_tiles
+                else:
+                    texture_path = cmds.getAttr(node + ".fileTextureName")
+                    if texture_path:
+                        info["texture"] = texture_path
+            except Exception as e:
+                print(f"⚠ Could not read texture from '{node}': {e}")
+            return info
+
+        # Handle pixSwitchRGBA
+        elif node_type == "pixSwitchRGBA":
+            try:
+                input_index = cmds.getAttr(node + ".inputIndex")
+                input_attr = f"{node}.input[{input_index}]"
+                return self.get_textures_recursively(input_attr, visited)
+            except Exception as e:
+                print(f"⚠ Could not trace pixSwitchRGBA '{node}': {e}")
+                return info
+
+        # Handle blendColors, remapColor, remapValue (forward upstream)
+        elif node_type in ["blendColors", "remapColor", "remapValue"]:
+            # These usually have a color/input attr
+            for port in ["color1", "color2", "input", "inputValue", "color"]:
+                if cmds.attributeQuery(port, node=node, exists=True):
+                    next_attr = f"{node}.{port}"
+                    upstream_info = self.get_textures_recursively(next_attr, visited)
+                    info["texture"] = upstream_info["texture"]
+                    info["value"] = upstream_info["value"]
+                    return info
+
+        # Handle layeredTexture
+        elif node_type == "layeredTexture":
+            connected_inputs = cmds.listConnections(node + ".inputs", plugs=True, source=True, destination=False) or []
+            textures = []
+            for inp in connected_inputs:
+                if ".color" in inp:
+                    sub_info = self.get_textures_recursively(inp, visited)
+                    if sub_info["texture"]:
+                        if isinstance(sub_info["texture"], list):
+                            textures.extend(sub_info["texture"])
+                        else:
+                            textures.append(sub_info["texture"])
+            info["texture"] = list(set(textures))  # remove duplicates
+            return info
+
+        # Default: Continue tracing upstream
+        return self.get_textures_recursively(upstream_attr, visited)
+
+    def get_shader_attribute_info(self, shader, attribute):
+        """
+        Wrapper for cleaner call from attribute list
+        """
+        attr = f"{shader}.{attribute}"
+        return self.get_textures_recursively(attr)
+
+    def get_all_shader_texture_info(self):
+        shader_attributes = {
+            "lambert": ["color", "transparency"],
+            "blinn": ["color", "specularColor", "transparency"],
+            "phong": ["color", "specularColor", "transparency"],
+            "aiStandardSurface": ["baseColor", "specularColor", "opacity"],
+            "pixToonLegacy": ["diffuseLitColor", "specularLitColor", "cutoutOpacity"],
+        }
+
+        all_data = {}
+
+        for shader_type, attributes in shader_attributes.items():
+            shader_nodes = cmds.ls(type=shader_type)
+            for shader in shader_nodes:
+                attr_data = {}
+                for attr in attributes:
+                    attr_data[attr] = self.get_shader_attribute_info(shader, attr)
+                all_data[shader] = attr_data
+
+        return all_data
+
+    def export_shader_info_to_json(self, output_path):
+        shader_data = self.get_all_shader_texture_info()
+        try:
+            with open(output_path, "w") as f:
+                json.dump(shader_data, f, indent=4)
+            print("✅ Exported shader info to: {}".format(output_path))
+        except Exception as e:
+            print("⚠ Failed to export shader info: {}".format(str(e)))
+
+    def print_shader_summary(self):
+        shader_data = self.get_all_shader_texture_info()
+        for shader, attrs in shader_data.items():
+            print("\n🧪 Shader: {}".format(shader))
+            for attr, data in attrs.items():
+                print("  ▶ Attribute: {}".format(attr))
+                print("    ├ Texture: {}".format(data["texture"]))
+                print("    └ Value:   {}".format(data["value"]))
+
+
+# Example runner
+def _runTextureAnalyzer():
+    analyzer = TextureAnalyzer()
+    analyzer.print_shader_summary()
+    output_path = "E:/Sanjay/tools/maya2022/AssetDelivery/config/shader_texture_report.json"
+    analyzer.export_shader_info_to_json(output_path)
