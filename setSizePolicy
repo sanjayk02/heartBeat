@@ -1,0 +1,45 @@
+from PySide6.QtWidgets import QSizePolicy
+
+# Ensure the window and UI widget expand to fill space
+self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+self.ui.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+# Ensure the top-level tab widget resizes properly
+self.ui.tabWidget_2.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+self.ui.tabWidget_2.setMinimumSize(0, 0)
+
+# Apply expanding policy to all major widgets
+for widget in [
+    self.ui.listWidget_type,
+    self.ui.listWidget_name,
+    self.ui.listWidget_asset,
+    self.ui.listWidget_phase,
+    self.ui.listWidget_variation,
+    self.ui.table,
+]:
+    widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+# Set a minimum height to the table for visibility and stretching
+self.ui.table.setMinimumHeight(250)
+self.ui.table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+# === Splitter Stretch Factors ===
+
+# Main vertical splitter (top vs bottom)
+if hasattr(self.ui, "splitterMain_2"):
+    self.ui.splitterMain_2.setStretchFactor(0, 2)  # top block (asset selection)
+    self.ui.splitterMain_2.setStretchFactor(1, 3)  # bottom block (table + path)
+
+# Top horizontal splitter (Type/Name/Asset vs Phase/Variation)
+if hasattr(self.ui, "splitterTop_2"):
+    self.ui.splitterTop_2.setStretchFactor(0, 3)
+    self.ui.splitterTop_2.setStretchFactor(1, 1)
+
+# Lower vertical splitter (Path/radio vs Buttons/progress)
+if hasattr(self.ui, "splitter_7"):
+    self.ui.splitter_7.setStretchFactor(0, 3)
+    self.ui.splitter_7.setStretchFactor(1, 1)
+
+# Optional: force splitter widget itself to expand too
+for splitter in [self.ui.splitterMain_2, self.ui.splitterTop_2, self.ui.splitter_7]:
+    splitter.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
