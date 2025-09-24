@@ -276,7 +276,8 @@ const AssetRow: React.FC<AssetRowProps> = ({
 };
 
 // ----------------- MAIN COMPONENT -----------------
-const AssetsDataTable: React.FC<AssetsDataTableProps & { onRequestSort?: (args: { field: string; dir: "asc" | "desc" }) }> = (props) => {
+// Declared as plain function (avoid complex const+type syntax to keep older toolchains happy)
+function AssetsDataTable(props: any) {
     // destructure props but keep full props object available if needed
     const { project, assets, tableFooter, dateTimeFormat, onRequestSort } = props;
 
